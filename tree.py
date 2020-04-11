@@ -1,6 +1,11 @@
 import copy
 from ete3 import Tree
 import re
+import numpy
+import sys
+sys.path.append('/home/xf2/github/SingleCellCNABenchmark')
+import gen_tree
+from gen_tree import gen_tree
 
 class node():
     def __init__(self, id, parent=-1, children = [], is_leaf = False):
