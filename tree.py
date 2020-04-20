@@ -6,6 +6,7 @@ import sys
 sys.path.append('/home/xf2/github/SingleCellCNABenchmark')
 import gen_tree
 from gen_tree import gen_tree
+verbose = False
 
 class node():
     def __init__(self, id, parent=-1, children = [], is_leaf = False):
@@ -21,13 +22,68 @@ class node():
         # leaf descendant
         self.leaf_desc = []
 
-# all events on top of a certain node
-def aggregate_events(tree, node):
-    e = copy.deepcopy(tree[node].edge)
+def get_leaf(tree):
+    l = []
+    for i in range(len(tree)):
+        if tree[i].is_leaf:
+            l.append(i)
+    return l
+
+def check_circle(tree, node):
     p = tree[node].parent
+    ps = [node]
     while p != -1:
+        if p in ps:
+            print "There is a circle"
+            return True
+        ps.append(p)
+        p = tree[p].parent
+    return False 
+
+
+# given a tree and two nodes, find the lca of the two
+def find_lca(tree, node1, node2):
+    p = tree[node1].parent
+    node1_ps = [node1]
+    node2_ps = [node2]
+    if check_circle(tree, node1) or check_circle(tree, node2):
+        return -1
+    while p != -1:
+        node1_ps.append(p)
+        p = tree[p].parent
+    p = node2
+    while p not in node1_ps and p != -1:
+        node2_ps.append(p)
+        p = tree[p].parent
+    if p == -1:
+        print "Warning: LCA is -1"
+        print node1_ps
+        print node2_ps
+        print "LCA of " + str(node1) + " and " + str(node2) + " is " + str(p)
+    return p 
+
+# check if node1 is node2's ancestor
+def if_ancestor(tree, node1, node2):
+    p = node2
+    while p != -1 and p != node1:
+        p = tree[p].parent
+    return p == node1
+
+# all events on top of a certain node1 but below node2
+def aggregate_events(tree, node1, node2):
+    if node1 == node2:
+        return []
+    e = copy.deepcopy(tree[node1].edge)
+    p = tree[node1].parent
+    while p != -1 and p != node2:
+        if verbose:
+            print str(p) + " edges are ",
         for i in tree[p].edge:
             e.append(i)
+            if verbose:
+                print i,
+        if verbose:
+            print ""
         p = tree[p].parent
     return e
 
@@ -42,6 +98,19 @@ def add_level_reverse(t):
             # get the parent's level
             i.level = p_level + 1
     return t 
+
+# this function add the leaf to desc on any tree order (random also permitted)
+def add_leaf_desc_general(tree, root):
+    if tree[root].is_leaf:
+        tree[root].leaf_desc = [root]
+        return [root]
+    children = tree[root].children
+    tree[root].leaf_desc = []
+    for i in children:
+        leaf_desc = add_leaf_desc_general(tree, i)
+        for j in leaf_desc:
+            tree[root].leaf_desc.append(j)
+    return tree[root].leaf_desc
 
 # for every internal node, add the leaf descendants in leaf_desc
 # tree is in reverse order, i.e., leaves' IDs are smaller than internal nodes'
@@ -85,6 +154,7 @@ def gen_newick(Tree, root, option):
         return convert2newick_topdown(Tree, "(" + str(root) + ")", 0)
     elif option == "bottomup" or option == "general":
         str_ = convert2newick_general(Tree, "(" + str(root) + ")", [root])
+        return str_
         
 
 # the leaves in Tree are in the subsequent order as those in t_MyNode
@@ -96,14 +166,14 @@ def convert2newick_general(Tree, str_, bucket):
     new_bucket = []
     for i in bucket:
         for j in range(len(splitted)):
-            if i == int(splitted[j]):
+            if str(i) == splitted[j]:
                 # replace it with children
-                splitted[j] = "(" + ",".join(map(str(x) for x in Tree[i].children)) + ")"
+                splitted[j] = "(" + ",".join([str(x) for x in Tree[i].children]) + ")"
                 for k in Tree[i].children:
                     if not Tree[k].is_leaf:
                         new_bucket.append(k)
     
-    convert2newick_general(Tree, "".join(splitted), new_bucket)
+    return convert2newick_general(Tree, "".join(splitted), new_bucket)
     
 # augment newick generation function
 def convert2newick_topdown(Tree, str_, i):
@@ -129,7 +199,8 @@ def convert2newick_topdown(Tree, str_, i):
             if str(splitted[i_]) == str(i):
                 break
         # now make a new string to replace
-        new_substr = "(" + "," . join(children) + ")"
+        c_ = [str(x) for x in children]
+        new_substr = "(" + "," . join(c_) + ")"
         #print str(splitted[i_]) + " is to be replaced by " + new_substr
         # concatenate
         splitted[i_] = new_substr + splitted[i_]
@@ -150,12 +221,13 @@ def add_children_from_MyNode(tree_file):
 
     # read the npy file and put them in MyNode
     for i in range(len(tree)):
-        node = tree[i]
-        parent = node.parentID
+        node_ = tree[i]
+        parent = node_.parentID
         ID = i
         Tree.append(node(ID, parent, [], False))
         # update the children of its parent
-        Tree[parent].children.append(ID)
+        if parent != -1:
+            Tree[parent].children.append(ID)
 
     # identify the leaves
     for i in range(len(Tree)):
@@ -166,22 +238,69 @@ def add_children_from_MyNode(tree_file):
 
 # from matrix leafid to original leaf id
 def reconstruct_leaf_id(leaf_id_f):
-    dic = []
+    dic_mat2tree = {}
+    dic_tree2mat = {}
     f = open(leaf_id_f, "r")
     line = f.readline().rstrip("\n")
     n = 0
     while(line != ""):
         n += 1
-        dic[n] = line
+        dic_mat2tree[n] = line
+        dic_tree2mat[line] = n
         line = f.readline().rstrip("\n")
 
-    return dic 
+    return dic_mat2tree, dic_tree2mat 
 
 # replace all ids in newick with their mapped ids
 def map_leafid_newick(str_, map_):
     splitted = re.split(r'(\d+)', str_)
     for i in range(len(splitted)):
-        if splitted[i] in map_.keys():
-            splitted[i] = map_[splitted[i]]
+        if splitted[i].isdigit() and int(splitted[i]) in map_.keys():
+            splitted[i] = map_[int(splitted[i])]
     return "".join(splitted)
+    
+# This function was a modified version of that in read_tree.py in SingleCellBenchmark project. The difference is that instead of output the new CNAs for each node, it creates a new tree (consistent with the tree defined in this file), and add the edges where the copy number chnage occurs. Note that the edge IDs are b followed by the index of the bin, starting from b1. THus the input file segcopy determines the coordinates of the bins.  
+# given a segcopy file with all nodes, a tree with the parent-children relationship, output the new CNAs of a child compared to the parent, including internal nodes
+def retrieve_new_overlappingCNAs(segcopy_f, Tree, prefix_len):
+    # convert it to the tree format in this file (with children and is_leaf and edge)
+    my_tree = add_children_from_MyNode(Tree):
+    f = open(segcopy_f, "r")
+    line = f.readline().rstrip("\n")
+    # from leaf id to the column index
+    names_h = {}
+    # from column index to leaf id
+    names_rev = {}
+    first = True
+    pre_cna = []
+    while(line != ""):
+        array = re.split(r'\s+', line)
+        if first:
+            names = array[3:]
+            for i in range(len(names)):
+                if names[i] == "":
+                    break
+                name = int(names[i][prefix_len:])
+                names_h[name] = i
+                names_rev[i] = name
+            first = False
+        else:
+            cnas = array[3:]
+            for i in range(len(cnas)):
+                if len(pre_cna) == 0:
+                    pre_cna = copy.deepcopy(cnas)
+                    continue
+                if cnas[i] == "":
+                    break
+                this_id = names_rev[i]
+                p = names_h[my_tree[this_id].parent]
+                # check if it is the same as the previous location
+                if cnas[i] != pre_cna[i]:
+                    # check if its parent has it
+                    if cnas[p] == pre_cna[p]: 
+                        # this is a new breakpoint
+                        my_tree[this_id].edge.append("b" + str(i+1))
+            pre_cna = copy.deepcopy(cnas)
+        line = f.readline().rstrip("\n")
+
+    return my_tree
     
