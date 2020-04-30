@@ -1,11 +1,12 @@
 import copy
 from ete3 import Tree
 import re
-import numpy
+import numpy as np
 import sys
 sys.path.append('/home/xf2/github/SingleCellCNABenchmark')
 import gen_tree
 from gen_tree import gen_tree
+from cna import check_overlap_one_node, total_edge_length, sep_chromosome_focal_CNA, get_overlap, get_overlap_two_sets
 verbose = False
 
 class node():
@@ -214,7 +215,7 @@ def convert2newick_topdown(Tree, str_, i):
 # add children and identify the is_leaf status
 def add_children_from_MyNode(tree_file):
     # add children
-    tree = numpy.load(tree_file, allow_pickle=True)
+    tree = np.load(tree_file, allow_pickle=True)
 
     # a new tree with a simplified structure
     Tree = []
@@ -263,7 +264,7 @@ def map_leafid_newick(str_, map_):
 # given a segcopy file with all nodes, a tree with the parent-children relationship, output the new CNAs of a child compared to the parent, including internal nodes
 def retrieve_new_overlappingCNAs(segcopy_f, Tree, prefix_len):
     # convert it to the tree format in this file (with children and is_leaf and edge)
-    my_tree = add_children_from_MyNode(Tree):
+    my_tree = add_children_from_MyNode(Tree)
     f = open(segcopy_f, "r")
     line = f.readline().rstrip("\n")
     # from leaf id to the column index
@@ -272,6 +273,7 @@ def retrieve_new_overlappingCNAs(segcopy_f, Tree, prefix_len):
     names_rev = {}
     first = True
     pre_cna = []
+    bin_id = 0
     while(line != ""):
         array = re.split(r'\s+', line)
         if first:
@@ -284,6 +286,7 @@ def retrieve_new_overlappingCNAs(segcopy_f, Tree, prefix_len):
                 names_rev[i] = name
             first = False
         else:
+            bin_id += 1
             cnas = array[3:]
             for i in range(len(cnas)):
                 if len(pre_cna) == 0:
@@ -292,15 +295,89 @@ def retrieve_new_overlappingCNAs(segcopy_f, Tree, prefix_len):
                 if cnas[i] == "":
                     break
                 this_id = names_rev[i]
-                p = names_h[my_tree[this_id].parent]
+                root = False
+                if my_tree[this_id].parent == -1:
+                    root = True
+                else:
+                    p = names_h[my_tree[this_id].parent]
                 # check if it is the same as the previous location
-                if cnas[i] != pre_cna[i]:
-                    # check if its parent has it
-                    if cnas[p] == pre_cna[p]: 
-                        # this is a new breakpoint
-                        my_tree[this_id].edge.append("b" + str(i+1))
+                if root and int(cnas[i]) != 2 or int(cnas[i]) - int(pre_cna[i]) != int(cnas[p]) - int(pre_cna[p]):
+                    my_tree[this_id].edge.append("b" + str(bin_id))
             pre_cna = copy.deepcopy(cnas)
         line = f.readline().rstrip("\n")
 
     return my_tree
     
+def calculate_overlap(tree, leaves):
+    ret_n = []
+    ret_l = []
+    ret_np = []
+    for i in leaves:
+        es = tree[i].edge
+        n, l, np = get_overlap(es) 
+        # overlapping CNA number
+        ret_n.append(n)
+        # overlapping CNA total length
+        ret_l.append(l)
+        # percentage of overlapping CNA
+        ret_np.append(np)
+    return ret_n, ret_l, ret_np
+
+def edge_statistics(tree, leaves):
+    ret_t_e = []
+    ret_e_avg = []
+    for i in leaves:
+        n_e = len(tree[i].edge)
+        total_l = total_edge_length(tree[i].edge)
+        # total CNA number
+        ret_t_e.append(n_e)
+        # average CNA length
+        ret_e_avg.append(float(total_l) / n_e)
+    return ret_t_e, ret_e_avg
+
+def edge_statistics_chro_focal(tree, leaves, ref_fa_f, t):
+    ret_chro_n = []
+    ret_nonchro_n = []
+    ret_chro_l_avg = []
+    ret_nonchro_l_avg = []
+    ret_nonchro_ov_n = []
+    ret_nonchro_ov_l = []
+    ret_nonchro_ov_p = []
+
+    # overlapping bases among focals, and focal and chromosomals, but not among chromosomals
+    ret_ov_l = []
+
+    for i in leaves:
+        # statistics on each cna
+        chro, nonchro, chro_e, nonchro_e = sep_chromosome_focal_CNA(tree[i].edge, ref_fa_f, t)
+        ret_chro_n.append(len(chro))
+        ret_nonchro_n.append(len(nonchro))
+        ret_chro_l_avg.append(np.average(np.array(chro)))
+        ret_nonchro_l_avg.append(np.average(np.array(nonchro)))
+    
+        # statistics on overlapping can
+        #n_chro, l_chro, p_chro = get_overlap(chro_e)
+        n_nonchro, l_nonchro, p_nonchro = get_overlap(nonchro_e)
+        #ret_chro_ov_n.append(n_chro)
+        #ret_chro_ov_l.append(l_chro)
+        ret_nonchro_ov_n.append(n_nonchro)
+        ret_nonchro_ov_l.append(l_nonchro)
+        ret_nonchro_ov_p.append(p_nonchro)
+
+        # for those duplicated chromosomal events, don't count them duplicatedly
+        if_merge_chrom = True
+        ov_l = get_overlap_two_sets(chro_e, nonchro_e, if_merge_chrom)
+        ov_l += l_nonchro
+        ret_ov_l.append(ov_l)
+
+    return ret_chro_n, ret_nonchro_n, ret_chro_l_avg, ret_nonchro_l_avg, ret_nonchro_ov_n, ret_nonchro_ov_l, ret_nonchro_ov_p, ret_ov_l
+
+
+
+   
+# add parent edges to each node that are desc of parent
+def add_ancestor_edges(tree, root):
+    for i in tree[root].children:
+        for j in tree[root].edge:
+            tree[i].edge.append(j) 
+        add_ancestor_edges(tree, i)
