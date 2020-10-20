@@ -141,14 +141,6 @@ def find_sibling(tree, node):
             return i
     return "NA"
 
-# return the robinson-foulds distance between two trees
-# the two trees are in newick strings
-def rf_dist(t1, t2):
-    tree1 = Tree(t1)
-    tree2 = Tree(t2)
-    r = tree1.compare(tree2)
-    return r['norm_rf']
-
 # genenerate newick formatted tree
 def gen_newick(Tree, root, option):
     if option == "topdown":
@@ -211,6 +203,18 @@ def convert2newick_topdown(Tree, str_, i):
         str_ = convert2newick_topdown(Tree, str_, i + 1)
     return str_
         
+# tree is in the node structure defined in this file
+def add_children_from_node(tree):
+    # clean it up
+    for i in range(len(tree)):
+        tree[i].children = []
+
+    for i in range(len(tree)):
+        p = tree[i].parent
+        if p != -1:
+            tree[p].children.append(i)
+    return tree
+
 # to be compatible with the old MyNode structure
 # add children and identify the is_leaf status
 def add_children_from_MyNode(tree_file):
@@ -381,3 +385,98 @@ def add_ancestor_edges(tree, root):
         for j in tree[root].edge:
             tree[i].edge.append(j) 
         add_ancestor_edges(tree, i)
+
+# get the nonleaf id and put them into an array
+def get_nonleaf_id(tree):
+    ret = []
+    for i in range(len(tree)):
+        if not tree[i].is_leaf:
+            ret.append(i)
+    return ret
+
+# with a transition (dic) from one set of ids to another, transfer the tree ids (including their orders in the array so that it is consistent with the second set
+def map_leafid_tree(tree, map_leafid_tree2mat):
+    nonleaf_id = get_nonleaf_id(tree)
+    j = 0
+    ret_t = []
+    # bookkeeping for updating parents
+    bk = {}
+    for i in range(len(tree)):
+        if str(i) in map_leafid_tree2mat.keys():
+            # this is a leaf place, put the corresponding leaf here
+            id_tree = map_leafid_tree2mat[str(i)]
+            ret_t.append(copy.deepcopy(tree[id_tree]))
+        else:
+            # this is not a leaf place, put the parent nodes here
+            id_tree = nonleaf_id[j]
+            ret_t.append(copy.deepcopy(tree[id_tree]))
+            j += 1
+        ret_t[-1].id = len(ret_t) - 1
+#TODO: how could 199's parent be 199, something's wrong with bk
+        bk[id_tree] = len(ret_t) - 1
+
+    # now correct parent
+    for i in range(len(ret_t)):
+        if ret_t[i].parent != -1:
+            ret_t[i].parent = bk[ret_t[i].parent]
+        
+    # now reconnect the children
+    ret_t = add_children_from_node(ret_t)
+
+    # find the true root
+    root = find_true_root(ret_t)
+
+    # add leaf_desc
+    add_leaf_desc_general(ret_t, root)
+    
+    return ret_t, root
+    
+def find_true_root(t):
+    for i in range(len(t)):
+        if t[i].parent == -1 and len(t[i].children) != 0:
+            return i
+    print "Warning: cannot find root in find_true_root in tree.py, will return 0 instead"
+    return 0
+
+# The following is the section of measuring the tree
+
+# return the robinson-foulds distance between two trees
+# the two trees are in newick strings
+def rf_dist(t1, t2):
+    tree1 = Tree(t1)
+    tree2 = Tree(t2)
+    r = tree1.compare(tree2)
+    return r['norm_rf']
+
+# Both trees in the following function should be binary.
+# compute the first partition of the tree, given the root, compared with the ground truth tree
+# suppose the first partition of the tree is divided by A and B, whereas GT tree is C and D.
+# suppose AC is the size of the intersection of A and C. 
+# Return a value of min(AC + BD, AD + BC) / (A + B)
+def first_partition_score(t1, r1, t2, r2):
+    dec1 = []
+    dec2 = []
+    for i1 in t1[r1].children:
+        dec1.append(t1[i1].leaf_desc) 
+    for i2 in t2[r2].children:
+        dec2.append(t2[i2].leaf_desc) 
+    if len(dec1) != 2 or len(dec2) != 2:
+        print "Error: the trees in first_partition_score in tree module are not binary. "
+        print "For tree 1, root is " + str(r1) + ", and its children are " + str(t1[r1].children)
+        print "For tree 2, root is " + str(r2) + ", and its children are " + str(t2[r2].children)
+        return 0
+    a1 = len(set(dec1[0]).intersection(set(dec2[0]))) + len(set(dec1[1]).intersection(set(dec2[1])))
+    a2 = len(set(dec1[0]).intersection(set(dec2[1]))) + len(set(dec1[1]).intersection(set(dec2[0])))
+    return min(a1, a2) / float(len(t1[r1].leaf_desc))
+
+# Given the tree defined in this file, calculate for each mutation, whether it has the correct parent mutation or not compared with the true tree. If there are more than oen mutation on one edge, as long as one pair matches, it is matched.
+def evaluate_mutation_p(t_inf, t_tru):
+    # list all the potential parents for each node
+    dic = find_parent_mutation(t_tru) 
+
+def find_parent_mutation(t):
+    for i in t:
+        if len(i.edge) != 0:
+            p = t[i].parent
+            if p != -1:
+                f
