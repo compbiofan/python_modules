@@ -3,7 +3,7 @@ from ete3 import Tree
 import re
 import numpy as np
 import sys
-sys.path.append('/home/xf2/github/SingleCellCNABenchmark')
+sys.path.append('/gpfs/home/xfan2/github/SingleCellCNABenchmark')
 import gen_tree
 from gen_tree import gen_tree
 from cna import check_overlap_one_node, total_edge_length, sep_chromosome_focal_CNA, get_overlap, get_overlap_two_sets
@@ -35,7 +35,7 @@ def check_circle(tree, node):
     ps = [node]
     while p != -1:
         if p in ps:
-            print "There is a circle"
+            print("There is a circle")
             return True
         ps.append(p)
         p = tree[p].parent
@@ -57,10 +57,10 @@ def find_lca(tree, node1, node2):
         node2_ps.append(p)
         p = tree[p].parent
     if p == -1:
-        print "Warning: LCA is -1"
-        print node1_ps
-        print node2_ps
-        print "LCA of " + str(node1) + " and " + str(node2) + " is " + str(p)
+        print("Warning: LCA is -1")
+        print(node1_ps)
+        print(node2_ps)
+        print("LCA of " + str(node1) + " and " + str(node2) + " is " + str(p))
     return p 
 
 # check if node1 is node2's ancestor
@@ -78,13 +78,13 @@ def aggregate_events(tree, node1, node2):
     p = tree[node1].parent
     while p != -1 and p != node2:
         if verbose:
-            print str(p) + " edges are ",
+            print(str(p) + " edges are ", end = "")
         for i in tree[p].edge:
             e.append(i)
             if verbose:
-                print i,
+                print(i, end="")
         if verbose:
-            print ""
+            print("")
         p = tree[p].parent
     return e
 
