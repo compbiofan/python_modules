@@ -22,3 +22,18 @@ def de_chr(c):
         return c[3:]
     else:
         return c
+
+def reverse_comp(seq):
+    # works for DNA
+    seq = seq[::-1]
+    s = list(seq)
+    for i in range(len(s)):
+        if s[i] == "A" or s[i] == "a":
+            s[i] = "T"
+        elif s[i] == "T" or s[i] == "t":
+            s[i] = "A"
+        elif s[i] == "G" or s[i] == "g":
+            s[i] = "C"
+        elif s[i] == "C" or s[i] == "c":
+            s[i] = "G"
+    return "".join(s)

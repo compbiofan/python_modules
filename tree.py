@@ -7,6 +7,9 @@ sys.path.append('/gpfs/home/xfan2/github/SingleCellCNABenchmark')
 import gen_tree
 from gen_tree import gen_tree
 from cna import check_overlap_one_node, total_edge_length, sep_chromosome_focal_CNA, get_overlap, get_overlap_two_sets
+# for generating a random tree
+import random
+from tree import node
 verbose = False
 
 class node():
@@ -22,6 +25,65 @@ class node():
         self.level = 0
         # leaf descendant
         self.leaf_desc = []
+
+# a is the array containing all the leaf ids to be present in the tree
+# return t which is the basic tree structure
+def generate_random_tree(a):
+    r = []
+    for i in range(len(a)):
+        r.append(i)
+    # initialize the tree
+    t = []
+    for i in range(0, range(len(a))):
+        # the id of the node is the actual value of the leaf
+        # however, when referring to parents or children, we still use their actual index in the array
+        t.append(node(a[i], -1, [], True))
+
+    while len(r) >= 2:
+        # continue drawing
+        # every time draw a pair to merge together
+        x = round(random.uniform(0, len(r) - 1))
+        v_x = r[x]
+        del r[x]
+        y = round(random.uniform(0, len(r) - 1))
+        v_y = r[y]
+        del r[y]
+        # replace with a new value and add to the tree
+        v_p = len(t)
+        r.append(v_p)
+        # connect the new node v_p with v_x and v_y
+        # here v_p in the index does not really matter
+        t.append(node(v_p, -1, [v_x, v_y], False))
+        t[v_x].parent = v_p
+        t[v_y].parent = v_p
+
+    return t
+        
+
+def print_tree(t):
+    for i in t:
+        print("id=" + str(i.id) + ", edge=" + str(i.edge) + ",children=" + str(i.children) + ",is_leaf = " + str(is_leaf))
+
+# return only the duplicated edges occurring to more than one edge as an array
+def ret_dup_tree_edges(tree):
+    e = []
+    eh = {}
+    for i in range(len(tree)):
+        for j in tree[i].edge:
+            if j in eh.keys():
+                e.append(j)
+            else:
+                eh[j] = 1
+    return e
+
+# return the union of all edges
+def sum_tree_edges(tree):
+    e = []
+    for i in range(len(tree)):
+        for j in tree[i].edge:
+            e.append(j)
+    return e
+
 
 def get_leaf(tree):
     l = []
@@ -219,7 +281,7 @@ def add_children_from_node(tree):
 # add children and identify the is_leaf status
 def add_children_from_MyNode(tree_file):
     # add children
-    tree = np.load(tree_file, allow_pickle=True)
+    tree = np.load(tree_file, allow_pickle=True, encoding='latin1')
 
     # a new tree with a simplified structure
     Tree = []
@@ -394,17 +456,20 @@ def get_nonleaf_id(tree):
             ret.append(i)
     return ret
 
+# this function is not used as we do not need to reorder every node in the tree. Only the leaves need to be changed for comparison with the ground truth, which is performed by other functions. 11/30/2020
 # with a transition (dic) from one set of ids to another, transfer the tree ids (including their orders in the array so that it is consistent with the second set
-def map_leafid_tree(tree, map_leafid_tree2mat):
+# debug: map_leafid_tree2mat should have been map_leafid_mat2tree
+def map_leafid_tree(tree, map_leafid_mat2tree):
     nonleaf_id = get_nonleaf_id(tree)
     j = 0
     ret_t = []
     # bookkeeping for updating parents
     bk = {}
+    id_tree = 0
     for i in range(len(tree)):
-        if str(i) in map_leafid_tree2mat.keys():
+        if str(i) in map_leafid_mat2tree.keys():
             # this is a leaf place, put the corresponding leaf here
-            id_tree = map_leafid_tree2mat[str(i)]
+            id_tree = map_leafid_mat2tree[str(i)]
             ret_t.append(copy.deepcopy(tree[id_tree]))
         else:
             # this is not a leaf place, put the parent nodes here
@@ -435,7 +500,7 @@ def find_true_root(t):
     for i in range(len(t)):
         if t[i].parent == -1 and len(t[i].children) != 0:
             return i
-    print "Warning: cannot find root in find_true_root in tree.py, will return 0 instead"
+    print("Warning: cannot find root in find_true_root in tree.py, will return 0 instead")
     return 0
 
 # The following is the section of measuring the tree
@@ -453,7 +518,7 @@ def rf_dist(t1, t2):
 # suppose the first partition of the tree is divided by A and B, whereas GT tree is C and D.
 # suppose AC is the size of the intersection of A and C. 
 # Return a value of min(AC + BD, AD + BC) / (A + B)
-def first_partition_score(t1, r1, t2, r2):
+def first_partition_score(t1, r1, t2, r2, map_leafindex2value):
     dec1 = []
     dec2 = []
     for i1 in t1[r1].children:
@@ -461,12 +526,20 @@ def first_partition_score(t1, r1, t2, r2):
     for i2 in t2[r2].children:
         dec2.append(t2[i2].leaf_desc) 
     if len(dec1) != 2 or len(dec2) != 2:
-        print "Error: the trees in first_partition_score in tree module are not binary. "
-        print "For tree 1, root is " + str(r1) + ", and its children are " + str(t1[r1].children)
-        print "For tree 2, root is " + str(r2) + ", and its children are " + str(t2[r2].children)
+        print("Error: the trees in first_partition_score in tree module are not binary. ")
+        print("For tree 1, root is " + str(r1) + ", and its children are " + str(t1[r1].children))
+        print("For tree 2, root is " + str(r2) + ", and its children are " + str(t2[r2].children))
         return 0
-    a1 = len(set(dec1[0]).intersection(set(dec2[0]))) + len(set(dec1[1]).intersection(set(dec2[1])))
-    a2 = len(set(dec1[0]).intersection(set(dec2[1]))) + len(set(dec1[1]).intersection(set(dec2[0])))
+    # change it to the ground tree's ordering system
+    dec2_ = []
+    id_ = 0
+    for l in dec2:
+        dec2_.append([])
+        for x in l:
+            dec2_[id_].append(map_leafindex2value[x])
+        id_ = id_ + 1
+    a1 = len(set(dec1[0]).intersection(set(dec2_[0]))) + len(set(dec1[1]).intersection(set(dec2_[1])))
+    a2 = len(set(dec1[0]).intersection(set(dec2_[1]))) + len(set(dec1[1]).intersection(set(dec2_[0])))
     return min(a1, a2) / float(len(t1[r1].leaf_desc))
 
 # Given the tree defined in this file, calculate for each mutation, whether it has the correct parent mutation or not compared with the true tree. If there are more than oen mutation on one edge, as long as one pair matches, it is matched.
