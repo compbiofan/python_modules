@@ -4,12 +4,13 @@ import re
 import numpy as np
 import sys
 sys.path.append('/gpfs/home/xfan2/github/SingleCellCNABenchmark')
+sys.setrecursionlimit(10000)
 import gen_tree
 from gen_tree import gen_tree
 from cna import check_overlap_one_node, total_edge_length, sep_chromosome_focal_CNA, get_overlap, get_overlap_two_sets
 # for generating a random tree
 import random
-from tree import node
+#from tree import node
 verbose = False
 
 class node():
@@ -26,15 +27,22 @@ class node():
         # leaf descendant
         self.leaf_desc = []
 
+# reroot the tree given a node so that the parent children relationship is right
+def reroot(t, r):
+    ps = [r]
+        while len(ps) != 0:
+        f
+
 # a is the array containing all the leaf ids to be present in the tree
 # return t which is the basic tree structure
 def generate_random_tree(a):
     r = []
-    for i in range(len(a)):
-        r.append(i)
     # initialize the tree
     t = []
-    for i in range(0, range(len(a))):
+    # the first node 0 is reserved
+    t.append(node(0, -1, [], False))
+    for i in range(1, len(a)):
+        r.append(i)
         # the id of the node is the actual value of the leaf
         # however, when referring to parents or children, we still use their actual index in the array
         t.append(node(a[i], -1, [], True))
