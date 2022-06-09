@@ -29,10 +29,35 @@ class node():
 
 # reroot the tree given a node so that the parent children relationship is right
 def reroot(t, r):
-    ps = [r]
-        while len(ps) != 0:
-        f
+    # assume the root parent is -1
+    ps = [r, -1]
+    ret_t = []
+    while len(ps) != 0:
+        [current, current_newp] = ps[0]
 
+        # look for the nodes connecting with it
+        family = [current.parent]
+        for c in current.children:
+            family.append(c)
+
+        # exclude those that were already processed since it is the new parent of the current one
+        family.remove(current_newp)
+
+        # the rest is the new children of current
+        leaf = True
+        if len(family) != 0:
+            leaf = False
+        ret_t.append(node(current, current_newp, family, leaf))
+
+        # push the children of the current one into ps
+        for c in family:
+            ps.append([c, current])
+
+        # delete current from the queue
+        del ps[0]
+
+    return ret_t
+        
 # a is the array containing all the leaf ids to be present in the tree
 # return t which is the basic tree structure
 def generate_random_tree(a):
