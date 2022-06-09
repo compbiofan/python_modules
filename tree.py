@@ -250,6 +250,7 @@ def find_sibling(tree, node):
 # genenerate newick formatted tree
 def gen_newick(Tree, root, option):
     if option == "topdown":
+        print("topdown option is not maintained any more. Suggest using general or bottomup. ")
         return convert2newick_topdown(Tree, "(" + str(root) + ")", 0)
     elif option == "bottomup" or option == "general":
         str_ = convert2newick_general(Tree, "(" + str(root) + ")", [root])
