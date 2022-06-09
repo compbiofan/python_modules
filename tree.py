@@ -10,6 +10,7 @@ from gen_tree import gen_tree
 from cna import check_overlap_one_node, total_edge_length, sep_chromosome_focal_CNA, get_overlap, get_overlap_two_sets
 # for generating a random tree
 import random
+import copy
 #from tree import node
 verbose = False
 
@@ -30,28 +31,38 @@ class node():
 # reroot the tree given a node so that the parent children relationship is right
 def reroot(t, r):
     # assume the root parent is -1
-    ps = [r, -1]
-    ret_t = []
+    # also assume the id of the node is the same as the index of the node in the t array
+    ps = []
+    ps.append([r, -1])
+    ret_t = copy.deepcopy(t)
     while len(ps) != 0:
-        [current, current_newp] = ps[0]
+        current, current_newp = ps[0]
 
         # look for the nodes connecting with it
-        family = [current.parent]
-        for c in current.children:
-            family.append(c)
+        family = [t[current].parent] + t[current].children
 
         # exclude those that were already processed since it is the new parent of the current one
-        family.remove(current_newp)
+        if -1 in family:
+            family.remove(-1)
+
+        if current_newp in family:
+            family.remove(current_newp)
 
         # the rest is the new children of current
         leaf = True
         if len(family) != 0:
             leaf = False
-        ret_t.append(node(current, current_newp, family, leaf))
+
+        ret_t[current].parent = current_newp
+        ret_t[current].children = family
+        ret_t[current].is_leaf = leaf
+        ret_t[current].id = current
+        #print("ret_t size " + str(len(ret_t)))
 
         # push the children of the current one into ps
         for c in family:
             ps.append([c, current])
+            print(str(c) + " is added to the list. ")
 
         # delete current from the queue
         del ps[0]
@@ -256,7 +267,7 @@ def convert2newick_general(Tree, str_, bucket):
         for j in range(len(splitted)):
             if str(i) == splitted[j]:
                 # replace it with children
-                splitted[j] = "(" + ",".join([str(x) for x in Tree[i].children]) + ")"
+                splitted[j] = "(" + ",".join([str(x) for x in Tree[i].children]) + ")" + str(i)
                 for k in Tree[i].children:
                     if not Tree[k].is_leaf:
                         new_bucket.append(k)
